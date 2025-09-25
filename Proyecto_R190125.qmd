@@ -1,0 +1,681 @@
+------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+Cargamos el dataset de AIRBNB [aquí](https://public.opendatasoft.com/explore/dataset/airbnb-listings/export/?disjunctive.host_verifications&disjunctive.amenities&disjunctive.features&q=Madrid&dataChart=eyJxdWVyaWVzIjpbeyJjaGFydHMiOlt7InR5cGUiOiJjb2x1bW4iLCJmdW5jIjoiQ09VTlQiLCJ5QXhpcyI6Imhvc3RfbGlzdGluZ3NfY291bnQiLCJzY2llbnRpZmljRGlzcGxheSI6dHJ1ZSwiY29sb3IiOiJyYW5nZS1jdXN0b20ifV0sInhBeGlzIjoiY2l0eSIsIm1heHBvaW50cyI6IiIsInRpbWVzY2FsZSI6IiIsInNvcnQiOiIiLCJzZXJpZXNCcmVha2Rvd24iOiJyb29tX3R5cGUiLCJjb25maWciOnsiZGF0YXNldCI6ImFpcmJuYi1saXN0aW5ncyIsIm9wdGlvbnMiOnsiZGlzanVuY3RpdmUuaG9zdF92ZXJpZmljYXRpb25zIjp0cnVlLCJkaXNqdW5jdGl2ZS5hbWVuaXRpZXMiOnRydWUsImRpc2p1bmN0aXZlLmZlYXR1cmVzIjp0cnVlfX19XSwidGltZXNjYWxlIjoiIiwiZGlzcGxheUxlZ2VuZCI6dHJ1ZSwiYWxpZ25Nb250aCI6dHJ1ZX0%3D&location=16,41.38377,2.15774&basemap=jawg.streets)
+
+![](descargar.png)
+
+```{r}
+file_path <- "/Users/davidsoteloseguin/Library/Mobile Documents/com~apple~CloudDocs/Personal/Formacion /Prebootcamp/ESTADISTICA/estadistica-datamining/practica/airbnb-listings.csv"
+
+# Verificar si existe
+if (!file.exists(file_path)) {
+  stop("❌ El archivo no se encuentra en la ruta indicada. Verifica nombre y carpeta.")
+}
+
+# Detectar separador automáticamente
+first_line <- readLines(file_path, n = 1)
+sep_used <- if (grepl(";", first_line)) ";" else ","
+
+# Cargar CSV
+airbnb <- read.csv(file_path, sep = sep_used)
+
+# Configurar gráficos
+options(repr.plot.height = 4, repr.plot.width = 6, repr.plot.res = 300)
+
+cat("✅ Dataset cargado con separador", sep_used, "\n")
+str(airbnb)
+```
+
+1.  Realizamos una selección de *features*, escogiendo aquellas que más nos interesan:
+
+    ‘City’, ‘Room.Type’, ‘Neighbourhood’, ‘Accommodates’, ‘Bathrooms’, ‘Bedrooms’, ‘Beds’, ‘Price’, ‘Square.Feet’, ‘Guests.Included’, ‘Extra.People’, ‘Review.Scores.Rating’, ‘Latitude’, ‘Longitude’.
+
+    Nos quedamos solo con las entradas de Madrid para Room.Type == "Entire home/apt" y cuyo barrio (*Neighbourhood*) no está vacío. Eliminamos las siguientes columnas que ya no son necesarias: ‘Room.Type’, ‘City’.
+
+    Llamamos al nuevo *dataframe* df_madrid.
+
+```{r}
+#FASE DE EXPLORACION DEL DF PARA EVALUAMOS SU ESTRUCTURA, DATOS E INCIDENCIAS QUE PUEDA CONTENER. CREAMOS UNA TABLA DE FRECUENCIAS PARA LA COLUMNA ROOM TYPE PARA EVALUAR SUS VALORES
+df_Room <- as.factor(airbnb$Room.Type)
+table(df_Room)
+```
+
+```{r}
+#FASE EXPLORACION. EXPLORAMOS LOS VALORES UNICOS DE LA COLUMNA CITY
+unique(airbnb$City)
+```
+
+```{r}
+#FASE EXPLORACION. EVALUAMOS LA COLUMNA NEIGHBOURHOOD, CREAMOS UNAS TABLAS DE FRECUENCIA PARA VER LOS POSIBLES N/A Y “ “ 
+airbnb_NbhNA <- airbnb[ ,"Neighbourhood"]
+table(is.na(airbnb$Neighbourhood))
+table(airbnb$Neighbourhood == "")
+```
+
+```{r}
+#FASE DE LIMPIEZA & PRERACION DEL DATO. APLICAMOS SELECT Y FILTER PARA OBTENER LOS DATOS REFERIDOS A MADRID, APARTAMENTO COMPLETO Y EN LOS CASOS EN LOS QUE TENEMOS EL NOMBRE DEL BARRIO TENER ESTA FEATURE EN TODOS LOS REGISTROS Y EMPLEARLA PARA LAS SIGUIENTES FASES DEL PROYECTO AL CONSIDERARLA RELEVANTE
+library(dplyr)
+
+df_madrid <- airbnb %>%
+  select(City, Room.Type, Neighbourhood, Accommodates, Bathrooms, 
+         Bedrooms, Beds, Price, Square.Feet, Guests.Included, 
+         Extra.People, Review.Scores.Rating, Latitude, Longitude) %>%
+  filter(City == "Madrid" & Room.Type == "Entire home/apt" & Neighbourhood != "")
+
+# Ver los resultados
+print(df_madrid)
+table(df_madrid$Room.Type)
+table(df_madrid$Neighbourhood != "")
+```
+
+------------------------------------------------------------------------
+
+**Feature engineering con la columna de Square Meters, generamos una nueva columna para armonizar la medida pasándola a metros cuadrados**
+
+```{r}
+#COMPROBACION DE LOS NOMBRES DE LAS COLUMNAS 
+colnames(df_madrid)
+```
+
+```{r}
+#CREACION DE LA COLUMNA DE CONVERSION DE PIES A METROS CUADRADOS
+df_madrid$Square.Meters <- df_madrid$Square.Feet * 0.092903
+
+na_square <- sum(is.na(df_madrid$Square.Meters))#CASOS NA
+print(na_square)
+naN_square <- sum(!is.na(df_madrid$Square.Meters))#CASOS NO NA
+print(naN_square)
+naZ_square <- sum(df_madrid$Square.Meters == 0, na.rm = TRUE)#CASOS IGUAL A 0,OJO SINO PONEMOS NA.RM = TRUE NOS CUENTA TAMBIEN LOS NA 
+print(naZ_square)
+```
+
+```{r}
+#CREAMOS UN HISTOGRAMA PARA EVALUAR LA DISTRIBUCION Y VALORES DE METROS CUADRADOS
+library(ggplot2)
+
+ggplot(df_madrid, aes(x = Square.Meters)) +
+  geom_histogram(binwidth = 10, fill = "steelblue", color = "white", alpha = 0.7) +
+  labs(title = "Distribución de metros cuadrados",
+       x = "Metros cuadrados",
+       y = "Frecuencia") +
+  theme_minimal()
+```
+
+```{r}
+#DETECTAMOS OUTLINERS CON VALORES ELEVADOS DE METROS CUADRADOS. LOS DESCARTAMOS NOS QUEDAMOS CON LOS VALORES ENTRE 0 > X < 300.
+
+df_madrid<- df_madrid[df_madrid$Square.Meters > 0 & df_madrid$Square.Meters <= 300, ]
+
+# Verificar las dimensiones del nuevo DataFrame
+dim(df_madrid_filtrado)
+
+# Mostrar un resumen de los datos filtrados
+summary(df_madrid_filtrado)
+```
+
+------------------------------------------------------------------------
+
+```{r}
+#EXPLORAMOS LOS APARTAMENTOS QUE NO MUESTRAN METROS CUADRADOS. PORCENTAJE DE CASOS N/A , CASOS CON VALORES ≠ 0 Y CASOS 0
+porcentaje_NA <- na_square / length(df_madrid$Square.Meters)#CASOS NA
+porcentaje_NUM <-(naN_square-naZ_square) / length(df_madrid$Square.Meters)#CASOS CON VALORES
+porcentaje_Z <- naZ_square/ length(df_madrid$Square.Meters) #CASOS CON ZEROS
+print(porcentaje_NA)
+print(porcentaje_NUM )
+print(porcentaje_Z)
+```
+
+------------------------------------------------------------------------
+
+```{r}
+#DIFERENCIAMOS LOS CASOS EN QUE EL PORCENTAJE DE CASOS 0 ENTRE LOS QUE NO SON NA
+porcentaje_ZEROS <- naZ_square/naN_square  
+print(porcentaje_ZEROS)
+```
+
+------------------------------------------------------------------------
+
+**Dado que metros cuadrados va a ser una feature relevante, estos valores que aparecen con 0 los marcamos explícitamente como N/A para que no sesguen estimadores como medias, varianza o modelos.**
+
+```{r}
+#Sustitucion de los 0 por NA
+df_madrid$Square.Meters[df_madrid$Square.Meters == 0 ] <- NA
+naZ_squareM2 <- sum(df_madrid$Square.Meters == 0, na.rm = TRUE)#OJO SINO PONEMOS NA.RM = TRUE
+#COMPROBACION DE QUE NO HAY 0 DFESPUES DEL REEMPLAZO POR NA
+print(naZ_squareM2)
+```
+
+```{r}
+#EXPLORAMOS LOS VALORES DE NEIGHBOURHOOD CREANDO UNA TABLA DE FRECUENCIA 
+table(df_madrid$Neighbourhood)
+```
+
+------------------------------------------------------------------------
+
+```{r}
+#CREACION DE HISTOGRAMA FRECUENIA SQUARE METERS .VALORES ATIPICOS SUPERIORES A 200 M2
+install.packages("ggplot2")
+library(ggplot2)
+#HAcemos una histograma para ver la distribucion del madrid
+ggplot(df_madrid, aes(x = Square.Meters)) +
+  geom_histogram(binwidth = , fill = "skyblue", color = "black", alpha = 0.7) +
+  labs(title = "Distribución de Square.Feet", x = "Square.Meters", y = "Frecuencia") +
+  xlim(0, 300) + # Limita a valores de 0 a 300
+  theme_minimal()
+```
+
+------------------------------------------------------------------------
+
+**Reevaluamos el problema. Considerando que los pisos con menos de 20 metros cuadrados son poco relevantes para realizar un modelo tanto de clusterización como de regresión con buena capacidad interpretativa, optamos por sustituir sus valores por N/A para que no introduzcan sesgos en las siguientes etapas del proyecto.**
+
+```{r}
+#SUSTITUCION POR N/A A LOS QUE SON <20 METROS.
+df_madrid$Square.Meters[df_madrid$Square.Meters < 20] <- NA
+summary(df_madrid$Square.Meters)
+```
+
+```{r}
+#ELIMINACION DE LOS BARRIOS QUE CUMPLEN LA CONDICION DE QUE TODOS SU VALORES DE SQUAREMETERS SON NA.EMPLEAMOS GROUP , FILTRAMOS Y POSTERIORMENTE DESAGRUPAMOS PARA MANTENER EL FORMATO DEL DF
+library(dplyr)
+df_madrid<- df_madrid %>%
+  group_by(Neighbourhood) %>%
+  filter(sum(is.na(Square.Meters)) < length(Square.Meters)) %>% 
+  ungroup()
+str(df_madrid)
+```
+
+```{r}
+#Comprobamos si hay algun barrio con valor vacio .No hay !!
+sum(df_madrid$Neighbourhood == "")
+```
+
+**La variable Neighbourhood es una dimensión en el dataset que, desde la lógica del proyecto, va a aportar tanto en la regresión lineal como en la clusterización. Solo por estar un apartamento en un barrio u otro va a existir relación con el precio, los metros cuadrados u otras features. Vamos a realizar un análisis estadístico con diferentes pruebas para los metros cuadrados por Neighbourhood**
+
+```{r}
+#REALIZO UN TEST SHAPIRO PARA VALORAR LA NORMALIDAD DE LA DISTRIBUCION DE METROS CUADRADOS POR BARRIOS 
+library(dplyr)
+library(ggplot2)
+library(forcats)
+library(scales)
+
+shapiro_results <- df_madrid %>%
+  filter(!is.na(Square.Meters)) %>%
+  group_by(Neighbourhood) %>%
+  summarise(
+    n = n(),
+    p_value = if (n() >= 3 && n() <= 5000) shapiro.test(Square.Meters)$p.value else NA_real_,
+    .groups = "drop"
+  ) %>%
+  filter(!is.na(p_value)) %>%
+  mutate(
+    p_adj = p.adjust(p_value, method = "BH"),      
+    decision_raw  = ifelse(p_value < 0.05, "No normal (p<0.05)", "No se rechaza normalidad"),
+    decision_fdr  = ifelse(p_adj   < 0.05, "No normal (FDR<0.05)", "No se rechaza (FDR)"),
+    mlog10p = -log10(p_value),
+    Neighbourhood = fct_reorder(Neighbourhood, mlog10p)
+  )
+
+print(shapiro_results)
+
+# Lollipop: -log10(p) por barrio 
+ggplot(shapiro_results, aes(x = mlog10p, y = Neighbourhood, color = decision_fdr)) +
+  geom_segment(aes(x = 0, xend = mlog10p, yend = Neighbourhood), linewidth = 0.6) +
+  geom_point(size = 2) +
+  geom_vline(xintercept = -log10(0.05), linetype = "dashed") +
+  geom_vline(xintercept = -log10(0.01), linetype = "dotted") +
+  labs(
+    title = "Normalidad por barrio (Shapiro–Wilk)",
+    subtitle = "Líneas: p=0.05 (discontinua), p=0.01 (punteada) | Colores por FDR (BH)",
+    x = expression(-log[10](p)), y = "Barrio", color = ""
+  ) +
+  theme_minimal()
+
+# p-valor vs tamaño muestral (potencia del test) 
+ggplot(shapiro_results, aes(x = n, y = p_value, color = decision_fdr)) +
+  geom_hline(yintercept = 0.05, linetype = "dashed") +
+  geom_point(alpha = 0.9) +
+  scale_y_continuous(trans = "log10", breaks = c(1, 0.1, 0.05, 0.01, 0.001),
+                     labels = label_number(accuracy = 0.001)) +
+  labs(
+    title = "p-valor vs tamaño de muestra (Shapiro–Wilk)",
+    x = "n por barrio", y = "p-valor (escala log10)", color = ""
+  ) +
+  theme_minimal()
+
+#Panel de QQ-plots: 4 peores p y 4 mejores p
+top_non_normal <- shapiro_results %>% arrange(p_value) %>% slice_head(n = 4) %>% pull(Neighbourhood) %>% as.character()
+top_high_p     <- shapiro_results %>% arrange(desc(p_value)) %>% slice_head(n = 4) %>% pull(Neighbourhood) %>% as.character()
+panel_neighs   <- c(top_non_normal, top_high_p)
+
+df_panel <- df_madrid %>%
+  filter(Neighbourhood %in% panel_neighs, !is.na(Square.Meters))
+
+ggplot(df_panel, aes(sample = Square.Meters)) +
+  stat_qq(size = 0.8, alpha = 0.75) +
+  stat_qq_line(linetype = "dashed") +
+  facet_wrap(~ Neighbourhood, scales = "free") +
+  labs(
+    title = "QQ-plots de metros cuadrados por barrio",
+    subtitle = "Selección de 4 barrios con menor p y 4 con mayor p",
+    x = "Cuantiles teóricos normales", y = "Cuantiles observados"
+  ) +
+  theme_minimal()
+```
+
+**Los valores del test determinan que hay un número de casos de barrios que no evidencian normalidad. Un siguiente paso coherente sería aplicar un test Bartlett para chequear la igualdad de varianzas y así guiar mejor el análisis de igualdad de medias, en el que deberíamos aplicar ANOVA o bien Kruskal-Wallis.**
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Filtramos barrios con al menos 2 observaciones no NA
+df_bartlett <- df_madrid %>%
+  filter(!is.na(Square.Meters)) %>%
+  group_by(Neighbourhood) %>%
+  filter(n() >= 2) %>%
+  ungroup()
+
+# Test de Bartlett
+bartlett_result <- bartlett.test(Square.Meters ~ Neighbourhood, data = df_bartlett)
+
+print(bartlett_result)
+
+# Visualización de varianzas por barrio
+
+var_by_neigh <- df_bartlett %>%
+  group_by(Neighbourhood) %>%
+  summarise(
+    n = n(),
+    var_m2 = var(Square.Meters, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(Neighbourhood = reorder(Neighbourhood, var_m2))
+
+# Gráfico de barras de varianza
+ggplot(var_by_neigh, aes(x = var_m2, y = Neighbourhood, fill = var_m2)) +
+  geom_col() +
+  scale_fill_viridis_c(option = "C") +
+  labs(
+    title = "Varianza de metros cuadrados por barrio",
+    subtitle = paste0("Bartlett p = ", signif(bartlett_result$p.value, 3)),
+    x = "Varianza (m²)", y = "Barrio"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# Boxplot comparativo
+ggplot(df_bartlett, aes(x = reorder(Neighbourhood, Square.Meters, var), 
+                        y = Square.Meters, fill = Neighbourhood)) +
+  geom_boxplot(show.legend = FALSE, outlier.size = 0.8) +
+  coord_flip() +
+  labs(
+    title = "Distribución de metros cuadrados por barrio",
+    subtitle = paste0("Bartlett p = ", signif(bartlett_result$p.value, 3)),
+    x = "Barrio", y = "Metros cuadrados"
+  ) +
+  theme_minimal()
+```
+
+**Los resultados indican que no se acepta la hipótesis nula (el valor de p \< 0,05), por lo que las varianzas son diferentes entre los barrios. Aun así, continuamos con los test que habría que realizar considerando que Shapiro y Bartlett nos ofreciesen confirmación de normalidad e igualdad en la varianza**
+
+```{r}
+#Hacemos un test ANOVA para comparar las medias (aunque habia que hacer un Kruskal)
+# Verificamos que la columna 'Neighbourhood' es un factor
+df_madrid$Neighbourhood <- as.factor(df_madrid$Neighbourhood)
+
+# Realizamos el ANOVA
+anova_result <- aov(Square.Meters ~ Neighbourhood, data = df_madrid)
+
+# Resumen de los resultados del ANOVA
+summary(anova_result)
+# El p-valor obtenido indica que existen importantes diferencias engre las medias de los barrios.
+```
+
+**Según el p-valor del test ANOVA, existen diferencias entre las medias de metros cuadrados por barrio. A continuación, realizamos un test Kruskal-Wallis, que sería el correcto dado los resultados obtenidos en los test previos al ANOVA.** 
+
+```{r}
+#Hacemos el test de Kruskal
+
+# Realizamos el test de Kruskal-Wallis
+kruskal_result <- kruskal.test(Square.Meters ~ Neighbourhood, data = df_madrid)
+
+# Ver los resultados
+print(kruskal_result)
+# El p-valor obtenido tambien indica que existen importantes diferencias entre las medias de los barrios.
+#Los resultados de Kruskall y Anova son coherentes entre si
+```
+
+**Se evidencia de una manera clara que existen diferencias en las varianzas de metros cuadrados entre los barrios, además de la ausencia de normalidad en la distribución. Continuamos con el análisis aplicando el test Tukey para estudiar la diferencia de las medias de metros cuadrados entre barrios.**
+
+```{r}
+#Hacemos un test de Tukey para estudiar la diferencia de medias entre barrios
+anova_result <- aov(Square.Meters ~ Neighbourhood, data = df_madrid)
+```
+
+```{r}
+
+tukey_result <- TukeyHSD(anova_result)
+print(tukey_result)
+
+#Conclusiones : Los P Adj cercanos a 1 indican que no hay diferencia .El sentido que pueden tener estos resultados conjuntamente con los test ANOVA y Kruskal es que :
+#1 Puede haber outliners ,valores altos como los detectados cercanos a 500, pueden afectar la comparacion entre pares 2 Anova al evaluar solo que haya al menos un grupo que #tenga la media significativamente diferente a las demas 3 Se detecta que en la comparacion de medias Jerónimos-Acacias un P >0.05
+
+```
+
+**Graficamos para visualizar de una manera más clara cuáles son los p-valores que nos indican las mayores diferencias entre las medias por pares de barrios. Utilizamos un Forest Plot para mostrar el punto de diferencia estimada de las medias, el intervalo de confianza y aquellos valores en los que el p-valor es menor que 0,05.**
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+# Convertir resultados Tukey en dataframe
+tukey_df <- as.data.frame(tukey_result$Neighbourhood)
+tukey_df$comparison <- rownames(tukey_df)
+
+# Separar barrios en columnas
+tukey_df <- tukey_df %>%
+  rename(p_adj = `p adj`) %>%
+  separate(comparison, into = c("Barrio1", "Barrio2"), sep = "-")
+
+# Heatmap
+ggplot(tukey_df, aes(x = Barrio1, y = Barrio2, fill = p_adj)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "red", high = "white", limits = c(0, 1)) +
+  theme_minimal(base_size = 12) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(
+    title = "Test de Tukey: Heatmap de comparaciones",
+    x = "Barrio 1", y = "Barrio 2", fill = "p-valor"
+  )
+```
+
+```{r}
+top_tukey <- tukey_df %>%
+  arrange(p_adj) %>%
+  slice(1:20)  
+
+ggplot(top_tukey, aes(x = diff, y = reorder(paste(Barrio1, "-", Barrio2), diff))) +
+  geom_point(aes(color = p_adj < 0.05), size = 3) +
+  geom_errorbar(aes(xmin = lwr, xmax = upr, color = p_adj < 0.05), width = 0.3) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey40") +
+  scale_color_manual(values = c("TRUE" = "red", "FALSE" = "black")) +
+  labs(
+    title = "Top 20 comparaciones Tukey (más extremas)",
+    x = "Diferencia de medias (m²)", y = "Comparación"
+  ) +
+  theme_minimal(base_size = 12)
+```
+
+**Ahora que tenemos p-valores que nos indican cuán parecidos son dos barrios, podemos usar esa matriz de distancia para generar una clusterización de los diferentes barrios. Para ello, calcularemos como métrica de distancia 1 - p-valor y, mediante diferentes técnicas de clusterización, generaremos agrupaciones por similitudes de barrios.**
+
+```{r}
+# Obtenemos los Levels de Neighbourhoods 
+neighbourhoods <- levels(df_madrid$Neighbourhood)
+
+# Creamos una matriz con los P-valores
+p_matrix <- matrix(NA, nrow = length(neighbourhoods), ncol = length(neighbourhoods))
+rownames(p_matrix) <- neighbourhoods
+colnames(p_matrix) <- neighbourhoods
+
+for (i in 1:(length(neighbourhoods) - 1)) {
+  for (j in (i + 1):length(neighbourhoods)) {
+    comparison <- paste(neighbourhoods[j], neighbourhoods[i], sep = "-")
+    if (comparison %in% rownames(tukey_result$Neighbourhood)) {
+      p_value <- tukey_result$Neighbourhood[comparison, "p adj"]
+      p_matrix[j, i] <- p_value
+      p_matrix[i, j] <- p_value 
+    }
+  }
+}
+
+# Diagonal de correlacion entre las mismas dimensiones = 1
+diag(p_matrix) <- 1
+
+# Ver la matriz de p-valores
+print("Matriz de p-valores:")
+print(p_matrix)
+```
+
+```{r}
+# Convertir p-valores en distancias: d = 1 - p
+distance_matrix <- 1 - p_matrix
+
+# Ver la matriz de distancias
+print("Matriz de distancias (1 - p):")
+print(distance_matrix)
+```
+
+**Graficamos el dendrograma con los clusters obtenidos empleando hclust**
+
+```{r}
+#Creamos el dendrograma generando previamente la distancia y posteriormente clusterizando jerarquicamente 
+# Convertir a objeto 'dist'
+distance_object <- as.dist(distance_matrix)
+
+# Clustering jerárquico y dendrograma
+hc <- hclust(distance_object, method = "complete")
+plot(hc, main = "Dendrograma basado en p-valores transformados (1 - p)",
+     xlab = "Grupos", sub = "", cex = 0.8)
+```
+
+**Realizamos una evaluación mediante Silhouette para analizar la estabilidad de los clusters y la detección de posibles outliers.**
+
+```{r}
+# Necesario
+library(cluster)
+
+# Crear el objeto de distancias a partir de tu matriz
+distance_object <- as.dist(distance_matrix)
+
+# Clustering jerárquico 
+hc <- hclust(distance_object, method = "complete")
+
+# Definir el número de clusters 
+k <- 4
+clusters <- cutree(hc, k = k)
+
+# Silhouette
+sil <- silhouette(clusters, distance_object)
+
+# Graficar
+plot(sil, 
+     main = paste("Gráfico de Silhouette (k =", k, ")"),
+     col = 2:(k+1), border = NA)
+
+#Silhouette medio
+mean_sil <- mean(sil[, 3])
+cat("Silhouette medio:", mean_sil, "\n")
+```
+
+```{r}
+# Hacemos un primer corte a h = 0.2 .Obtenemos 3 clusters
+clusters3 <- cutree(hc, h = 0.2)
+
+# Mostrar los clusters asignados
+print(clusters3)
+```
+
+**Ahora que tenemos una agrupación de clusters sólida y consistente por barrios, otra solución posible sería generar un modelo de regresión lineal con el que poder predecir los metros cuadrados de un piso considerando las features con las que hemos trabajado en el dataset y el propio cluster generado.**
+
+```{r}
+#Creamos un DF con el codigo de los clusters 
+cluster_results1 <- data.frame(
+  Barrio = names(clusters1), 
+  Cluster = clusters1        
+)
+
+# Ver los resultados
+print(cluster_results1)
+```
+
+```{r}
+colnames(df_madrid)[grepl("Cluster", colnames(df_madrid))]
+```
+
+Evitamos columnas duplicadas por el Join con Cluster
+
+```{r}
+library(dplyr)
+
+# Detectar todas las columnas que contengan "Cluster"
+cluster_cols <- colnames(df_madrid)[grepl("Cluster", colnames(df_madrid))]
+
+# Conservar solo la primera y renombrarla como "Cluster"
+df_madrid <- df_madrid %>%
+  rename(Cluster = !!cluster_cols[1]) %>%
+  select(-setdiff(cluster_cols, cluster_cols[1]))
+```
+
+```{r}
+install.packages("dplyr")
+install.packages("GGally")  # Si no está instalado
+library(GGally)
+library(ggplot2)
+```
+
+```{r}
+library(ggplot2)
+```
+
+```{r}
+library(dplyr)   # activa %>%
+```
+
+**Creamos el dataframe para el modelo de regresión lineal**
+
+```{r}
+
+df_selected <- df_madrid %>%
+  select(Square.Meters,Accommodates, Bathrooms, Bedrooms, Beds, Price, Cluster)
+```
+
+```{r}
+install.packages("GGally")   # solo la primera vez
+library(GGally)
+```
+
+**Evaluamos la correlación entre las diferentes features para evitar problemas de multicolinealidad.**
+
+```{r}
+# Graficamos la correlacion entre las dimensiones del DF.Queremos explorar la relacion entre las variables 
+ggpairs(df_selected, 
+        aes(color = as.factor(Cluster), alpha = 0.5)) +  # Colorea por Cluster.x
+  theme_minimal()  # Estilo minimalista
+```
+
+```{r}
+# Añadimos un generador de aleatoriedad 
+set.seed(12345)
+
+# Dividimos en 70% entrenamiento y 30% prueba
+idx <- sample(1:nrow(df_madrid), nrow(df_madrid) * 0.7)
+
+# Generamos los grupos de entrenamiento y test
+df_madrid_train <- df_madrid[idx, ]  # Entranamiento (70%)
+df_madrid_test <- df_madrid[-idx, ]  # Test (30%)
+
+cat("Tamaño del conjunto de entrenamiento:", nrow(df_madrid_train), "\n")
+cat("Tamaño del conjunto de prueba:", nrow(df_madrid_test), "\n")
+```
+
+**Creamos el modelo de regresión lineal para predecir los metros cuadrados de los apartamentos a partir de las features Cluster + Accommodates + Bathrooms + Bedrooms + Beds**
+
+```{r}
+#El histograma no sigue una distribucion normal, el Modelo a aplicar mas adecuado seria un GLM , no obstante al seguir la linea de test ANOVA opto por dar continuidad a esta linea de trabajo y realizo un LM
+lm_model <- lm(Square.Meters ~ Cluster + Accommodates + Bathrooms + Bedrooms + Beds , data = df_madrid_train)
+
+summary(lm_model)
+
+```
+
+Los resultados obtenidos nos permiten explicar un 72% de la variabilidad de los metros cuadrados, lo que indica que se trata de un modelo bien ajustado. A partir de las variables consideradas conseguimos predecir un 72% del valor del *target*, con una desviación de 19 m².
+
+Realizamos una serie de pruebas para evaluar el resultado de las predicciones:
+
+```{r}
+#Hacemos predicciones con el conjunto de prueba usando el modelo ajustado
+predictions <- predict(lm_model, newdata = df_madrid_test)
+print(predictions)
+```
+
+**Probamos el modelo predictivo introduciendo los valores que representarían cada una de las features que lo componen y así predecir el target (metros cuadrados del apartamento)**
+
+```{r}
+#Creamos un DF
+nuevo_apartamento<- data.frame(
+  Cluster = 1,         
+  Accommodates = 6,
+  Bathrooms = 1,
+  Bedrooms = 3,
+  Beds = 3,
+  Price = 80    
+)
+
+#Aplicamos el modelo LM generado para obtener la prediccion 
+predicted_square_meters <- predict(lm_model, newdata = nuevo_apartamento)
+print(predicted_square_meters)
+```
+
+**En último lugar damos una funcionalidad adicional al modelo para su uso en la imputación de valores faltantes. En vez de emplear un modelo simple mediante el uso de la media, la imputación a partir de un modelo de regresión lineal permite mantener la consistencia de las relaciones entre variables y la varianza para mantener la robustez en etapas sucesivas en el desarrollo**
+
+```{r}
+#Buscamos en el resultado de preductions NA para que no que no interfieran el calculo de las metricas de desempeño del modelo
+any(is.na(predictions))
+```
+
+```{r}
+#Localizamos NA que tendremos que eliminar para hacer el calculo de MAE, RMSE y R2
+colSums(is.na(df_madrid_test))
+```
+
+```{r}
+#Omitimos los valores NA
+df_madrid_test <- na.omit(df_madrid_test)
+```
+
+```{r}
+#Calculamos el Error medio absoluto
+mae <- mean(abs(df_madrid_test$Square.Meters - predictions))
+print(paste("MAE:", mae))
+
+#Calculamos el Error cuadrático medio
+rmse <- sqrt(mean((df_madrid_test$Square.Meters - predictions)^2))
+print(paste("RMSE:", rmse))
+
+#Calculamos el Coeficiente de determinación 
+ss_total <- sum((df_madrid_test$Square.Meters - mean(df_madrid_test$Square.Meters))^2)
+ss_residual <- sum((df_madrid_test$Square.Meters - predictions)^2)
+r_squared <- 1 - (ss_residual / ss_total)
+print(paste("R²:", r_squared))
+```
+
+```{r}
+# Localizamos la(s) fila(s) con NA antes de imputar
+na_index <- which(is.na(df_madrid$Square.Meters))
+
+# Guardamos info de la fila antes del reemplazo
+fila_original <- df_madrid[na_index, ]
+
+# Hacemos la predicción para esa fila
+predicted_value <- predict(lm_model, newdata = fila_original)
+
+# Mostramos qué fila fue imputada y con qué valor
+cat("Fila imputada:", na_index, "\n")
+cat("Valor estimado:", predicted_value, "\n")
+
+# Reemplazamos el valor NA con el estimado
+df_madrid$Square.Meters[na_index] <- predicted_value
+```
+
+```{r}
+#Predecimos las estimaciones para las filas
+predicted_values <- predict(lm_model, newdata = na_rows)
+```
+
+```{r}
+#Reemplazamos los valores NA por las predicciones 
+df_madrid$Square.Meters[is.na(df_madrid$Square.Meters)] <- predicted_values
+```
