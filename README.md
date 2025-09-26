@@ -116,18 +116,30 @@ El notebook sigue una secuencia lógica de análisis y modelado orientada a reso
 - Eliminación de barrios donde todos los m² son NA.
 - Histogramas y resúmenes para validar distribución y detectar outliers.
 
+![Silhouette clusters](Imagenes/6.png)
+
 **→ Objetivo:** disponer de una **variable de tamaño consistente** y confiable.
 
 ---
 
 ### 3) Diagnóstico estadístico
+
 - **Test de Shapiro–Wilk**: normalidad de m² por barrio (con ajuste FDR).
   
-![Test Shapiro–Wilk](imagenes/1.png)
+![Test Shapiro–Wilk](Imagenes/1.png)
+
+
   
 - **Test de Bartlett**: igualdad de varianzas entre barrios.
+  
+![QQ-plot barrios](Imagenes/2.png)
+
+  
 - QQ-plots y gráficos de varianza para confirmar supuestos.
 
+
+
+!(Imagenes/6.png)
 **→ Hallazgos:** no normalidad y varianzas distintas → mejor aplicar **Kruskal–Wallis** en lugar de ANOVA clásico.
 
 ---
@@ -137,6 +149,8 @@ El notebook sigue una secuencia lógica de análisis y modelado orientada a reso
 - **Kruskal–Wallis** (robusto) → confirma diferencias significativas.
 - **Post-hoc**:
   - **Tukey HSD** tras ANOVA.
+    
+![Varianzas Bartlett](Imagenes/3.png)
   - Recomendación: **Dunn** si se sigue coherentemente Kruskal–Wallis.
 
 **→ Objetivo:** identificar barrios significativamente diferentes en tamaño medio de vivienda.
@@ -147,7 +161,12 @@ El notebook sigue una secuencia lógica de análisis y modelado orientada a reso
 - Construcción de matriz de distancias a partir de p-valores (`d = 1 - p`).
 - **Clustering jerárquico (hclust)** con enlace *complete*.
 - Dendrograma de agrupaciones.
+  
+![Boxplot m²](Imagenes/4.png)
+
 - Validación con **Silhouette** para evaluar estabilidad de los clusters.
+
+![Dendrograma clusters](Imagenes/5.png)
 
 **→ Objetivo:** agrupar barrios “similares” para reglas de negocio (pricing, marketing, operaciones).
 
