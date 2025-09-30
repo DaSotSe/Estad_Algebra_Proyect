@@ -393,6 +393,149 @@ ggplot(tukey_df, aes(x = Barrio1, y = Barrio2, fill = p_adj)) +
 ```
 
 ```{r}
+
+# install.packages("heatmaply")       
+# install.packages(c("dplyr","tidyr","stringr","RColorBrewer","viridisLite","htmlwidgets"))
+library(dplyr)
+library(tidyr)
+library(stringr)
+library(heatmaply)
+library(viridisLite)
+library(htmlwidgets)
+
+
+
+tukey_result <- TukeyHSD(anova_result)
+
+
+stopifnot("Neighbourhood" %in% names(tukey_result))
+
+
+tukey_df <- as.data.frame(tukey_result$Neighbourhood)
+tukey_df$comparison <- rownames(tukey_df)
+
+
+tukey_df <- tukey_df %>%
+  rename(
+    diff   = diff,
+    lwr    = lwr,
+    upr    = upr,
+    p_adj  = `p adj`
+  ) %>%
+  separate(comparison, into = c("Barrio2", "Barrio1"), sep = "-", remove = TRUE) 
+
+
+#Construir la matriz cuadrada de p-valores ajustados 
+# Niveles de barrio (del factor usado en el ANOVA)
+neighs <- levels(anova_result$model$Neighbourhood)
+
+# Creamos todas las combinaciones barrio×barrio
+grid_all <- expand.grid(Barrio1 = neighs, Barrio2 = neighs, stringsAsFactors = FALSE)
+
+
+grid_p <- grid_all %>%
+  left_join(tukey_df %>% select(Barrio1, Barrio2, p_adj, diff, lwr, upr),
+            by = c("Barrio1","Barrio2"))
+
+
+grid_p <- grid_p %>%
+  mutate(
+    p_adj_diag = ifelse(Barrio1 == Barrio2, 1, p_adj)
+  ) %>%
+  select(-p_adj) %>%
+  rename(p_adj = p_adj_diag)
+
+# Relleno valores espejo
+mirror <- grid_p %>%
+  rename(Barrio1_m = Barrio1, Barrio2_m = Barrio2, p_adj_m = p_adj) %>%
+  select(Barrio1_m, Barrio2_m, p_adj_m)
+
+grid_p <- grid_p %>%
+  left_join(mirror, by = c("Barrio1" = "Barrio2_m", "Barrio2" = "Barrio1_m")) %>%
+  mutate(p_adj = ifelse(is.na(p_adj), p_adj_m, p_adj)) %>%
+  select(Barrio1, Barrio2, p_adj)
+
+
+grid_p$p_adj[is.na(grid_p$p_adj)] <- 1
+
+
+mat_p <- grid_p %>%
+  pivot_wider(names_from = Barrio2, values_from = p_adj) %>%
+  arrange(match(Barrio1, neighs))
+
+rownames_mat <- pull(mat_p, Barrio1)
+mat_p <- as.matrix(mat_p[,-1])
+rownames(mat_p) <- rownames_mat
+colnames(mat_p) <- colnames(mat_p) 
+
+
+
+d <- as.dist(1 - mat_p)
+hc_rows <- hclust(d, method = "complete")
+hc_cols <- hclust(d, method = "complete")  
+
+
+grid_diff <- grid_all %>%
+  left_join(tukey_df %>% select(Barrio1, Barrio2, p_adj, diff, lwr, upr),
+            by = c("Barrio1","Barrio2")) %>%
+  mutate(
+    diff = ifelse(is.na(diff), 0, diff),                 # espejo/diag
+    p_adj = ifelse(is.na(p_adj) & Barrio1==Barrio2, 1, p_adj),
+    p_adj = ifelse(is.na(p_adj), 1, p_adj)
+  )
+
+hover_df <- grid_diff %>%
+  mutate(hover = paste0(
+    "Barrio 1: ", Barrio1, "<br>",
+    "Barrio 2: ", Barrio2, "<br>",
+    "p-ajustado: ", sprintf("%.4f", p_adj), "<br>",
+    "Δ medias (m²): ", sprintf("%.2f", diff)
+  )) %>%
+  select(Barrio1, Barrio2, hover) %>%
+  pivot_wider(names_from = Barrio2, values_from = hover) %>%
+  arrange(match(Barrio1, rownames(mat_p)))
+
+hover_mat <- as.matrix(hover_df[,-1])
+rownames(hover_mat) <- hover_df[[1]]
+colnames(hover_mat) <- colnames(mat_p)
+
+
+ord_r <- hc_rows$order
+ord_c <- hc_cols$order
+mat_p_ord    <- mat_p[ord_r, ord_c, drop = FALSE]
+hover_ord    <- hover_mat[ord_r, ord_c, drop = FALSE]
+
+
+
+cols <- colorRampPalette(c("#b2182b","#ef8a62","#fddbc7","#f7f7f7","#d1e5f0","#67a9cf","#2166ac"))(256)
+
+
+p_heat <- heatmaply(
+  mat_p_ord,
+  Rowv = as.dendrogram(hc_rows),
+  Colv = as.dendrogram(hc_cols),
+  colors = cols,
+  limits = c(0, 1),
+  xlab = "Barrio 2",
+  ylab = "Barrio 1",
+  main = "Tukey HSD (p-ajustado) — Heatmap Interactivo",
+  scale = "none",
+  hide_colorbar = FALSE,
+  plot_method = "plotly",
+  grid_color = "white",
+  grid_width = 0.1,
+  custom_hovertext = hover_ord,
+  show_dendrogram = c(TRUE, TRUE)
+)
+
+p_heat
+
+dir.create("output/figs", showWarnings = FALSE, recursive = TRUE)
+saveWidget(p_heat, file = "output/figs/heatmap_tukey_interactivo.html", selfcontained = TRUE)
+
+```
+
+```{r}
 top_tukey <- tukey_df %>%
   arrange(p_adj) %>%
   slice(1:20)  
